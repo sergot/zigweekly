@@ -40,4 +40,4 @@ The build refuses to publish an issue that still has a `<!-- DRAFT` marker in it
 
 ## License
 
-Code: MIT, see [LICENSE](LICENSE). Newsletter text: CC BY-SA 4.0, see [LICENSE-CONTENT.md](LICENSE-CONTENT.md).
+Code: MIT, see [LICENSE](LICENSE). Newsletter text: CC BY-SA 4.0, see [LICENSE-CONTENT](LICENSE-CONTENT).
