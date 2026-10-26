@@ -87,10 +87,10 @@ fn renderIssue(w: *Writer, issue: md.Issue, fmt: md.Format, opts: RenderOptions)
         },
         .web => {
             try pageHead(w, issue.title, false);
-            try w.writeAll("<main>\n<p><a href=\"../index.html\">&larr; All issues</a></p>\n");
+            try w.writeAll("<main>\n<p><a href=\"../\">&larr; All issues</a></p>\n");
             try meta(w, issue);
             try md.render(w, issue.body, .web);
-            try w.writeAll("<p><a href=\"../index.html\">&larr; All issues</a></p>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n");
+            try w.writeAll("<p><a href=\"../\">&larr; All issues</a></p>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n");
             try feedLink(w, opts.feed_prefix);
             try w.writeAll("</main>\n</body>\n</html>\n");
         },
@@ -159,6 +159,8 @@ fn pageHead(w: *Writer, title: []const u8, feeds: bool) !void {
 }
 
 const disclaimer = "Independent community newsletter, not affiliated with the Zig Software Foundation.";
+
+const repo_url = "https://github.com/sergot/zigweekly";
 
 const feed_limit = 10;
 const index_limit = 5;
@@ -246,7 +248,7 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
         if (n < index_limit) try indexItem(&index.writer, stem, name, issue.date);
     }
     if (stems.len == 0) try index.writer.writeAll("<li>No issues yet.</li>\n");
-    try index.writer.writeAll("</ul>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n");
+    try index.writer.writeAll("</ul>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n<p class=\"meta\"><a href=\"" ++ repo_url ++ "\">Source and contributions on GitHub</a></p>\n");
     if (site.url.len > 0) try feedLink(&index.writer, "");
     try index.writer.writeAll("</main>\n</body>\n</html>\n");
 
@@ -293,7 +295,8 @@ fn indexHead(w: *Writer, site: Site) !void {
 }
 
 fn indexItem(w: *Writer, stem: []const u8, name: []const u8, date: []const u8) !void {
-    try w.print("<li><a href=\"issues/{f}.html\">", .{esc(stem)});
+    // No ".html": Cloudflare Pages serves issues/<stem>.html at issues/<stem> and redirects the long form.
+    try w.print("<li><a href=\"issues/{f}\">", .{esc(stem)});
     try md.escape(w, name);
     try w.writeAll("</a>");
     if (date.len > 0) {
@@ -311,13 +314,13 @@ fn feedItems(arena: std.mem.Allocator, atom: *Writer, rss: *Writer, site: Site, 
 
     try atom.writeAll("<entry><title>");
     try md.escape(atom, name);
-    try atom.print("</title><id>{f}/issues/{f}.html</id><link href=\"{f}/issues/{f}.html\"/><updated>{f}T00:00:00Z</updated><author><name>{f}</name></author><content type=\"html\">", .{ esc(url), esc(stem), esc(url), esc(stem), esc(date), esc(site.title) });
+    try atom.print("</title><id>{f}/issues/{f}</id><link href=\"{f}/issues/{f}\"/><updated>{f}T00:00:00Z</updated><author><name>{f}</name></author><content type=\"html\">", .{ esc(url), esc(stem), esc(url), esc(stem), esc(date), esc(site.title) });
     try md.escape(atom, html.written());
     try atom.writeAll("</content></entry>\n");
 
     try rss.writeAll("<item><title>");
     try md.escape(rss, name);
-    try rss.print("</title><link>{f}/issues/{f}.html</link><guid isPermaLink=\"true\">{f}/issues/{f}.html</guid><pubDate>{s}</pubDate><description>", .{ esc(url), esc(stem), esc(url), esc(stem), try rfc822(arena, date) });
+    try rss.print("</title><link>{f}/issues/{f}</link><guid isPermaLink=\"true\">{f}/issues/{f}</guid><pubDate>{s}</pubDate><description>", .{ esc(url), esc(stem), esc(url), esc(stem), try rfc822(arena, date) });
     try md.escape(rss, html.written());
     try rss.writeAll("</description></item>\n");
 }
@@ -387,8 +390,9 @@ test "feed escapes site title and stem" {
     const site: Site = .{ .title = "A & B", .url = "https://x.dev" };
     try feedItems(arena.allocator(), &atom.writer, &rss.writer, site, "a&b", "n", "2026-10-26", .{ .body = "hi" });
     try std.testing.expect(std.mem.indexOf(u8, atom.written(), "<name>A &amp; B</name>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, atom.written(), "issues/a&amp;b.html") != null);
-    try std.testing.expect(std.mem.indexOf(u8, rss.written(), "issues/a&amp;b.html") != null);
+    try std.testing.expect(std.mem.indexOf(u8, atom.written(), "issues/a&amp;b</id>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rss.written(), "issues/a&amp;b</link>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, atom.written(), ".html") == null);
 }
 
 test {
