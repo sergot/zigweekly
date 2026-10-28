@@ -255,18 +255,20 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
     if (site.url.len > 0) try writeFeeds(arena, io, out, site, atom_entries.written(), rss_items.written(), newest);
     try out.writeFile(io, .{ .sub_path = "index.html", .data = index.written() });
 
-    // shortcut: one hardcoded page, relative to the working directory; generalise when a second page appears.
-    var pages = Io.Dir.cwd().openDir(io, "pages", .{}) catch |e|
+    // Every pages/<name>.md becomes <name>.html (privacy policy, subscribe thank-you pages).
+    var pages = Io.Dir.cwd().openDir(io, "pages", .{ .iterate = true }) catch |e|
         fail("error: cannot open pages: {t}\n", .{e});
     defer pages.close(io);
-    const page = try readIssue(arena, io, pages, "pages", "privacy");
-    var pw: Writer.Allocating = .init(arena);
-    try pageHead(&pw.writer, page.title, false);
-    try pw.writer.writeAll("<main>\n<p><a href=\"./\">&larr; Zig Weekly</a></p>\n");
-    try meta(&pw.writer, page);
-    try md.render(&pw.writer, page.body, .web);
-    try pw.writer.writeAll("</main>\n</body>\n</html>\n");
-    try out.writeFile(io, .{ .sub_path = "privacy.html", .data = pw.written() });
+    for (try issueStems(arena, io, pages)) |stem| {
+        const page = try readIssue(arena, io, pages, "pages", stem);
+        var pw: Writer.Allocating = .init(arena);
+        try pageHead(&pw.writer, page.title, false);
+        try pw.writer.writeAll("<main>\n<p><a href=\"./\">&larr; Zig Weekly</a></p>\n");
+        try meta(&pw.writer, page);
+        try md.render(&pw.writer, page.body, .web);
+        try pw.writer.writeAll("</main>\n</body>\n</html>\n");
+        try out.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}.html", .{stem}), .data = pw.written() });
+    }
 }
 
 fn issueStems(arena: std.mem.Allocator, io: Io, dir: Io.Dir) ![]const []const u8 {
