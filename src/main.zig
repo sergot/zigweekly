@@ -248,12 +248,25 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
         if (n < index_limit) try indexItem(&index.writer, stem, name, issue.date);
     }
     if (stems.len == 0) try index.writer.writeAll("<li>No issues yet.</li>\n");
-    try index.writer.writeAll("</ul>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n<p class=\"meta\"><a href=\"" ++ repo_url ++ "\">Source and contributions on GitHub</a></p>\n");
+    try index.writer.writeAll("</ul>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n<p class=\"meta\"><a href=\"" ++ repo_url ++ "\">Source code</a> · <a href=\"privacy\">Privacy policy</a> · Content: <a href=\"https://creativecommons.org/licenses/by-sa/4.0/\">CC BY-SA 4.0</a></p>\n");
     if (site.url.len > 0) try feedLink(&index.writer, "");
     try index.writer.writeAll("</main>\n</body>\n</html>\n");
 
     if (site.url.len > 0) try writeFeeds(arena, io, out, site, atom_entries.written(), rss_items.written(), newest);
     try out.writeFile(io, .{ .sub_path = "index.html", .data = index.written() });
+
+    // shortcut: one hardcoded page, relative to the working directory; generalise when a second page appears.
+    var pages = Io.Dir.cwd().openDir(io, "pages", .{}) catch |e|
+        fail("error: cannot open pages: {t}\n", .{e});
+    defer pages.close(io);
+    const page = try readIssue(arena, io, pages, "pages", "privacy");
+    var pw: Writer.Allocating = .init(arena);
+    try pageHead(&pw.writer, page.title, false);
+    try pw.writer.writeAll("<main>\n<p><a href=\"./\">&larr; Zig Weekly</a></p>\n");
+    try meta(&pw.writer, page);
+    try md.render(&pw.writer, page.body, .web);
+    try pw.writer.writeAll("</main>\n</body>\n</html>\n");
+    try out.writeFile(io, .{ .sub_path = "privacy.html", .data = pw.written() });
 }
 
 fn issueStems(arena: std.mem.Allocator, io: Io, dir: Io.Dir) ![]const []const u8 {
@@ -289,7 +302,7 @@ fn indexHead(w: *Writer, site: Site) !void {
     if (site.form_action.len > 0) {
         try w.writeAll("<form method=\"post\" action=\"");
         try md.escape(w, site.form_action);
-        try w.writeAll("\"><input type=\"email\" name=\"email\" placeholder=\"you@example.com\" required aria-label=\"Email address\"><button type=\"submit\">Subscribe</button></form>\n");
+        try w.writeAll("\"><input type=\"email\" name=\"email\" placeholder=\"you@example.com\" required aria-label=\"Email address\"><button type=\"submit\">Subscribe</button></form>\n<p class=\"meta\">By subscribing you agree to the <a href=\"privacy\">privacy policy</a>. Unsubscribe any time.</p>\n");
     }
     try w.writeAll("<h2>Past issues</h2>\n<ul>\n");
 }

@@ -32,7 +32,7 @@ jobs:
         run: zig build test
 
       - name: Build site
-        run: zig build run -- site issues out --url https://zigweekly.com
+        run: zig build run -- site issues out --url https://zigweekly.com --form-action https://buttondown.com/api/emails/embed-subscribe/zigweekly
 
       - name: Deploy to Cloudflare Pages
         if: github.event_name != 'pull_request'
