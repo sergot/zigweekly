@@ -11,7 +11,7 @@ const usage =
     \\render: one issue to stdout (or -o file). web = full HTML page,
     \\        email = table layout with inline styles, text = plain text.
     \\site:   writes <out>/index.html (past issues, subscribe form if --form-action),
-    \\        <out>/feed.xml (Atom) and rss.xml (RSS 2.0), only with --url,
+    \\        <out>/feed.xml (Atom), rss.xml (RSS 2.0), sitemap.xml and robots.txt, only with --url,
     \\        <out>/issues/<name>.html, and <out>/email/<name>.{html,txt}.
     \\
 ;
@@ -77,6 +77,7 @@ fn cmdRender(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
 const RenderOptions = struct {
     site_title: []const u8 = "",
     feed_prefix: ?[]const u8 = null,
+    canonical: []const u8 = "",
 };
 
 fn renderIssue(w: *Writer, issue: md.Issue, fmt: md.Format, opts: RenderOptions) !void {
@@ -86,7 +87,7 @@ fn renderIssue(w: *Writer, issue: md.Issue, fmt: md.Format, opts: RenderOptions)
             try md.render(w, issue.body, .text);
         },
         .web => {
-            try pageHead(w, issue.title, false);
+            try pageHead(w, issue.title, false, opts.canonical, "");
             try w.writeAll("<main>\n<p><a href=\"../\">&larr; All issues</a></p>\n");
             try meta(w, issue);
             try md.render(w, issue.body, .web);
@@ -149,10 +150,12 @@ const css =
     \\
 ;
 
-fn pageHead(w: *Writer, title: []const u8, feeds: bool) !void {
+fn pageHead(w: *Writer, title: []const u8, feeds: bool, canonical: []const u8, description: []const u8) !void {
     try w.writeAll("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>");
     try md.escape(w, title);
     try w.writeAll("</title>\n");
+    if (description.len > 0) try w.print("<meta name=\"description\" content=\"{f}\">\n", .{esc(description)});
+    if (canonical.len > 0) try w.print("<link rel=\"canonical\" href=\"{f}\">\n", .{esc(canonical)});
     if (feeds) try w.writeAll("<link rel=\"alternate\" type=\"application/atom+xml\" href=\"feed.xml\">\n<link rel=\"alternate\" type=\"application/rss+xml\" href=\"rss.xml\">\n");
     try w.writeAll(css);
     try w.writeAll("</head>\n<body>\n");
@@ -165,7 +168,7 @@ const repo_url = "https://github.com/sergot/zigweekly";
 const feed_limit = 10;
 const index_limit = 5;
 
-const tagline = "A weekly digest of what is happening in the Zig community.";
+const tagline = "A weekly Zig newsletter: this week in Zig, from core changes and ZLS to community projects.";
 
 const Site = struct {
     title: []const u8 = "Zig Weekly",
@@ -217,7 +220,7 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
     try out.createDirPath(io, "email");
 
     var index: Writer.Allocating = .init(arena);
-    try indexHead(&index.writer, site);
+    try indexHead(arena, &index.writer, site);
 
     var atom_entries: Writer.Allocating = .init(arena);
     var rss_items: Writer.Allocating = .init(arena);
@@ -232,6 +235,7 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
             try renderIssue(&aw.writer, issue, o.fmt, .{
                 .site_title = site.title,
                 .feed_prefix = if (site.url.len > 0) "../" else null,
+                .canonical = if (site.url.len > 0) try std.fmt.allocPrint(arena, "{s}/issues/{s}", .{ site.url, stem }) else "",
             });
             try out.writeFile(io, .{
                 .sub_path = try std.fmt.allocPrint(arena, "{s}/{s}.{s}", .{ o.dir, stem, o.ext }),
@@ -252,7 +256,10 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
     if (site.url.len > 0) try feedLink(&index.writer, "");
     try index.writer.writeAll("</main>\n</body>\n</html>\n");
 
-    if (site.url.len > 0) try writeFeeds(arena, io, out, site, atom_entries.written(), rss_items.written(), newest);
+    if (site.url.len > 0) {
+        try writeFeeds(arena, io, out, site, atom_entries.written(), rss_items.written(), newest);
+        try writeSearchFiles(arena, io, out, site.url, stems);
+    }
     try out.writeFile(io, .{ .sub_path = "index.html", .data = index.written() });
 
     // Every pages/<name>.md becomes <name>.html (privacy policy, subscribe thank-you pages).
@@ -262,7 +269,7 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
     for (try issueStems(arena, io, pages)) |stem| {
         const page = try readIssue(arena, io, pages, "pages", stem);
         var pw: Writer.Allocating = .init(arena);
-        try pageHead(&pw.writer, page.title, false);
+        try pageHead(&pw.writer, page.title, false, if (site.url.len > 0) try std.fmt.allocPrint(arena, "{s}/{s}", .{ site.url, stem }) else "", "");
         try pw.writer.writeAll("<main>\n<p><a href=\"./\">&larr; Zig Weekly</a></p>\n");
         try meta(&pw.writer, page);
         try md.render(&pw.writer, page.body, .web);
@@ -294,8 +301,8 @@ fn readIssue(arena: std.mem.Allocator, io: Io, dir: Io.Dir, dir_path: []const u8
     return md.parseIssue(src);
 }
 
-fn indexHead(w: *Writer, site: Site) !void {
-    try pageHead(w, site.title, site.url.len > 0);
+fn indexHead(arena: std.mem.Allocator, w: *Writer, site: Site) !void {
+    try pageHead(w, try std.fmt.allocPrint(arena, "{s} \u{2013} weekly Zig newsletter", .{site.title}), site.url.len > 0, if (site.url.len > 0) try std.fmt.allocPrint(arena, "{s}/", .{site.url}) else "", tagline);
     try w.writeAll("<main>\n<h1>");
     try md.escape(w, site.title);
     try w.writeAll("</h1>\n<p>" ++ tagline);
@@ -338,6 +345,15 @@ fn feedItems(arena: std.mem.Allocator, atom: *Writer, rss: *Writer, site: Site, 
     try rss.print("</title><link>{f}/issues/{f}</link><guid isPermaLink=\"true\">{f}/issues/{f}</guid><pubDate>{s}</pubDate><description>", .{ esc(url), esc(stem), esc(url), esc(stem), try rfc822(arena, date) });
     try md.escape(rss, html.written());
     try rss.writeAll("</description></item>\n");
+}
+
+fn writeSearchFiles(arena: std.mem.Allocator, io: Io, out: Io.Dir, url: []const u8, stems: []const []const u8) !void {
+    var sm: Writer.Allocating = .init(arena);
+    try sm.writer.print("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n<url><loc>{f}/</loc></url>\n<url><loc>{f}/privacy</loc></url>\n", .{ esc(url), esc(url) });
+    for (stems) |stem| try sm.writer.print("<url><loc>{f}/issues/{f}</loc></url>\n", .{ esc(url), esc(stem) });
+    try sm.writer.writeAll("</urlset>\n");
+    try out.writeFile(io, .{ .sub_path = "sitemap.xml", .data = sm.written() });
+    try out.writeFile(io, .{ .sub_path = "robots.txt", .data = try std.fmt.allocPrint(arena, "User-agent: *\nAllow: /\nSitemap: {s}/sitemap.xml\n", .{url}) });
 }
 
 fn writeFeeds(arena: std.mem.Allocator, io: Io, out: Io.Dir, site: Site, atom_entries: []const u8, rss_items: []const u8, newest: []const u8) !void {
@@ -408,6 +424,19 @@ test "feed escapes site title and stem" {
     try std.testing.expect(std.mem.indexOf(u8, atom.written(), "issues/a&amp;b</id>") != null);
     try std.testing.expect(std.mem.indexOf(u8, rss.written(), "issues/a&amp;b</link>") != null);
     try std.testing.expect(std.mem.indexOf(u8, atom.written(), ".html") == null);
+}
+
+test "sitemap and robots" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+    try writeSearchFiles(arena.allocator(), io, tmp.dir, "https://x.dev", &.{"a&b"});
+    const sm = try tmp.dir.readFileAlloc(io, "sitemap.xml", arena.allocator(), .limited(4096));
+    try std.testing.expect(std.mem.indexOf(u8, sm, "<loc>https://x.dev/issues/a&amp;b</loc>") != null);
+    const rb = try tmp.dir.readFileAlloc(io, "robots.txt", arena.allocator(), .limited(4096));
+    try std.testing.expect(std.mem.indexOf(u8, rb, "Sitemap: https://x.dev/sitemap.xml") != null);
 }
 
 test {
