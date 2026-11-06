@@ -13,7 +13,7 @@ This is an independent community project, not affiliated with the Zig Software F
 - Publishing an issue means moving its file from `draft/` to `issues/` in a pull request.
   When that merges to `main`, the site is built and deployed automatically.
 - `zw` (in `src/`) is the small tool that turns issue Markdown files into the website,
-  an Atom feed, an RSS feed, and email and plain-text versions.
+  an Atom feed, an RSS feed, and plain-text versions.
 
 ## Contributing
 

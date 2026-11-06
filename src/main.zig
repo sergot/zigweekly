@@ -5,14 +5,14 @@ const md = @import("md.zig");
 
 const usage =
     \\usage:
-    \\  zw render <issue.md> [--to web|email|text] [-o out]
+    \\  zw render <issue.md> [--to web|text] [-o out]
     \\  zw site <issues_dir> <out_dir> [--title T] [--url https://site] [--form-action URL]
     \\
     \\render: one issue to stdout (or -o file). web = full HTML page,
-    \\        email = table layout with inline styles, text = plain text.
+    \\        text = plain text.
     \\site:   writes <out>/index.html (past issues, subscribe form if --form-action),
     \\        <out>/feed.xml (Atom), rss.xml (RSS 2.0), sitemap.xml and robots.txt, only with --url,
-    \\        <out>/issues/<name>.html, and <out>/email/<name>.{html,txt}.
+    \\        <out>/issues/<name>.html, and <out>/text/<name>.txt.
     \\
 ;
 
@@ -75,7 +75,6 @@ fn cmdRender(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
 }
 
 const RenderOptions = struct {
-    site_title: []const u8 = "",
     feed_prefix: ?[]const u8 = null,
     canonical: []const u8 = "",
 };
@@ -94,21 +93,6 @@ fn renderIssue(w: *Writer, issue: md.Issue, fmt: md.Format, opts: RenderOptions)
             try w.writeAll("<p><a href=\"../\">&larr; All issues</a></p>\n<p class=\"meta\">" ++ disclaimer ++ "</p>\n");
             try feedLink(w, opts.feed_prefix);
             try w.writeAll("</main>\n</body>\n</html>\n");
-        },
-        .email => {
-            try w.writeAll("<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>");
-            try md.escape(w, issue.title);
-            try w.writeAll("</title></head>\n<body style=\"margin:0;padding:0;background:#f4f4f4;\">\n" ++
-                "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\">\n" ++
-                "<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;background:#ffffff;padding:24px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#222;\"><tr><td>\n");
-            if (opts.site_title.len > 0) {
-                try w.writeAll("<p style=\"margin:0 0 12px;font-weight:bold;color:#c27800;\">");
-                try md.escape(w, opts.site_title);
-                try w.writeAll("</p>\n");
-            }
-            try md.render(w, issue.body, .email);
-            try w.writeAll("<p style=\"margin:24px 0 0;font-size:13px;color:#777;\">" ++ disclaimer ++ "</p>\n");
-            try w.writeAll("</td></tr></table>\n</td></tr></table>\n</body></html>\n");
         },
     }
 }
@@ -180,8 +164,7 @@ const Output = struct { fmt: md.Format, dir: []const u8, ext: []const u8 };
 
 const outputs = [_]Output{
     .{ .fmt = .web, .dir = "issues", .ext = "html" },
-    .{ .fmt = .email, .dir = "email", .ext = "html" },
-    .{ .fmt = .text, .dir = "email", .ext = "txt" },
+    .{ .fmt = .text, .dir = "text", .ext = "txt" },
 };
 
 fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
@@ -217,7 +200,7 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
     var out = try Io.Dir.cwd().createDirPathOpen(io, out_path, .{});
     defer out.close(io);
     try out.createDirPath(io, "issues");
-    try out.createDirPath(io, "email");
+    try out.createDirPath(io, "text");
 
     var index: Writer.Allocating = .init(arena);
     try indexHead(arena, &index.writer, site);
@@ -233,7 +216,6 @@ fn cmdSite(gpa: std.mem.Allocator, io: Io, args: []const [:0]const u8) !void {
         for (outputs) |o| {
             var aw: Writer.Allocating = .init(arena);
             try renderIssue(&aw.writer, issue, o.fmt, .{
-                .site_title = site.title,
                 .feed_prefix = if (site.url.len > 0) "../" else null,
                 .canonical = if (site.url.len > 0) try std.fmt.allocPrint(arena, "{s}/issues/{s}", .{ site.url, stem }) else "",
             });

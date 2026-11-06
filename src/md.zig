@@ -1,7 +1,7 @@
 const std = @import("std");
 const Writer = std.Io.Writer;
 
-pub const Format = enum { web, email, text };
+pub const Format = enum { web, text };
 
 pub const Issue = struct {
     title: []const u8 = "",
@@ -155,32 +155,16 @@ fn renderHeading(w: *Writer, level: u8, text: []const u8, fmt: Format) Writer.Er
     try close(w, fmt, tag);
 }
 
-fn tagStyle(tag: Tag) []const u8 {
-    return switch (tag) {
-        .h1 => "font-size:26px;margin:24px 0 12px;",
-        .h2 => "font-size:20px;margin:28px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;",
-        .h3 => "font-size:16px;margin:20px 0 6px;",
-        .p => "margin:0 0 12px;",
-        .ul, .ol => "margin:0 0 12px;padding-left:24px;",
-        .li => "margin:0 0 6px;",
-        .blockquote => "margin:0 0 12px;padding:4px 12px;border-left:4px solid #f7a41d;color:#555;",
-        .pre => "margin:0 0 12px;padding:10px;background:#f4f4f4;overflow:auto;font-family:monospace;font-size:13px;",
-        .code => "font-family:monospace;background:#f4f4f4;padding:0 3px;",
-        .a => "color:#c27800;",
-    };
-}
-
 fn open(w: *Writer, fmt: Format, tag: Tag) Writer.Error!void {
     switch (fmt) {
         .web => try w.print("<{t}>", .{tag}),
-        .email => try w.print("<{t} style=\"{s}\">", .{ tag, tagStyle(tag) }),
         .text => if (tag == .li) try w.writeAll("- "),
     }
 }
 
 fn close(w: *Writer, fmt: Format, tag: Tag) Writer.Error!void {
     switch (fmt) {
-        .web, .email => try w.print("</{t}>\n", .{tag}),
+        .web => try w.print("</{t}>\n", .{tag}),
         .text => try w.writeAll(switch (tag) {
             .li, .ul, .ol => "\n",
             else => "\n\n",
@@ -231,11 +215,7 @@ fn inlineMd(w: *Writer, s: []const u8, fmt: Format) Writer.Error!void {
                     try inlineMd(w, l.text, fmt);
                     try w.print(" ({s})", .{l.url});
                 } else if (safeUrl(l.url)) {
-                    if (fmt == .email) {
-                        try w.writeAll("<a style=\"");
-                        try w.writeAll(tagStyle(.a));
-                        try w.writeAll("\" href=\"");
-                    } else try w.writeAll("<a href=\"");
+                    try w.writeAll("<a href=\"");
                     try escape(w, l.url);
                     try w.writeAll("\">");
                     try inlineMd(w, l.text, fmt);
@@ -296,13 +276,6 @@ test "text format" {
 
 test "html comments are dropped, single and multi line" {
     try expectRender("<!-- note -->\n\npara\n\n<!-- a\nb -->\n\nend\n", .web, "<p>para</p>\n<p>end</p>\n");
-}
-
-test "email uses inline styles" {
-    var aw: Writer.Allocating = .init(std.testing.allocator);
-    defer aw.deinit();
-    try render(&aw.writer, "para", .email);
-    try std.testing.expectStringStartsWith(aw.written(), "<p style=\"");
 }
 
 test "front matter" {
