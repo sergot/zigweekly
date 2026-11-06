@@ -15,6 +15,17 @@ This is an independent community project, not affiliated with the Zig Software F
 - `zw` (in `src/`) is the small tool that turns issue Markdown files into the website,
   an Atom feed, an RSS feed, and plain-text versions.
 
+## Send an issue by email
+
+After an issue is published, paste its Markdown into a new [Buttondown](https://buttondown.com) email.
+This prints the body without the front matter:
+
+```sh
+awk 'f{print} /^---$/{n++; if(n==2)f=1}' issues/<file>.md | wl-copy
+```
+
+Use `xclip -selection clipboard` instead of `wl-copy` on X11, or `pbcopy` on macOS.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Short version: one link per pull request, against the file in `draft/`.
