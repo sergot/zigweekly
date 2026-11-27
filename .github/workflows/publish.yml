@@ -5,7 +5,9 @@ name: publish
 on:
   push:
     branches: [main]
+    paths-ignore: ['draft/**']
   pull_request:
+    paths-ignore: ['draft/**']
   workflow_dispatch:
 
 permissions:
